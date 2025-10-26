@@ -50,6 +50,8 @@ Before you begin, make sure you have:
 
 Follow these steps to get the server running on your computer.
 
+Now added a .exe build for Windows in releases: https://github.com/MestreTM/ps5_pkg_virtual_shop/releases
+
 ### 1️⃣ Clone the repository
 
 ```bash
