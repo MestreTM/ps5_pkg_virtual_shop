@@ -15,6 +15,8 @@ Instead of typing URLs manually or using command-line tools, this server scans y
 
 It is built with a **Python Flask backend** and a **lightweight vanilla JavaScript frontend**.
 
+![imagem](https://i.imgur.com/wP8KSDp.png)
+
 ---
 
 ## ✨ Features
