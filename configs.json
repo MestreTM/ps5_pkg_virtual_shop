@@ -1,0 +1,9 @@
+{
+	"shop_title": "PS5 PKG Virtual Shop",
+    "paths": {
+        "games": "C:\\pkgs\\games",
+        "media": "C:\\pkgs\\media",
+        "apps": "C:\\pkgs\\apps",
+        "tools": "C:\\pkgs\\tools"
+    }
+}
