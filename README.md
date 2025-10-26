@@ -67,7 +67,7 @@ python -m venv venv
 source venv/bin/activate  # On Windows use: venv\Scripts\activate
 
 # Install required libraries
-pip install Flask Pillow
+pip install Flask Pillow waitress
 ```
 
 ### 3️⃣ Configure your library
