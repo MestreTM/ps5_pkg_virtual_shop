@@ -257,7 +257,7 @@ def get_settings():
 def check_agent():
     # API endpoint to check if the client is a PS5 based on its User-Agent.
     user_agent = request.headers.get('User-Agent', '')
-    is_ps5 = "" in user_agent
+    is_ps5 = "Playstation 5" in user_agent
     app.logger.info(f"User-Agent Check: '{user_agent}' -> is_ps5: {is_ps5}")
     return jsonify({"is_ps5": is_ps5})
 
@@ -317,4 +317,5 @@ if __name__ == '__main__':
     print("Example: http://YOUR_NETWORK_IP:5000")
     print("\nAccess locally: http://127.0.0.1:5000")
     print("==================================================")
+
     app.run(host='0.0.0.0', port=5000, debug=True)
