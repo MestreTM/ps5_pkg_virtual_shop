@@ -19,17 +19,14 @@ from flask import Flask, request, jsonify, send_from_directory
 
 # ==============================================================================
 # PART 1: FLASK SERVER LOGIC
-# This section contains all the backend logic for the web server, including
-# PKG file parsing, caching, and API endpoint definitions.
 # ==============================================================================
 
 app = Flask(__name__)
-# Suppress standard Flask/Werkzeug logging to the console to avoid clutter.
+# Suppress standard Flask/Werkzeug logging to the console.
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
 # --- Constants and Application Paths ---
-# These constants define magic numbers, file IDs, and default file/folder names.
 MAGIC_PS4 = 0x7f434E54
 ICON0_ID = 0x1200
 PARAM_SFO_ID = 0x1000
@@ -40,10 +37,7 @@ DEFAULT_SHOP_TITLE = "PS5 PKG Virtual Shop"
 DEFAULT_PORT = 5000
 
 def get_base_path():
-    """
-    Determines the base path for the application, supporting both
-    normal execution (.py) and bundled executables (e.g., via PyInstaller).
-    """
+    # Determines the base path for the application, supporting .py and bundled executables.
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     else:
@@ -61,10 +55,7 @@ APP_CONFIG = {}
 # --- PKG File Handling Functions and Classes ---
 
 def sanitize_filename(name):
-    """
-    Removes null bytes and illegal characters from a string to create a
-    valid filename.
-    """
+    # Removes illegal characters to create a valid filename.
     if not name: return None
     name = name.replace('\x00', '').strip()
     name = re.sub(r'[\\/*?:"<>|]', '_', name)
@@ -77,10 +68,7 @@ class ContentType(IntEnum): UNKNOWN = 0x0; GAME_DATA = 0x4; GAME_EXEC = 0x5; PS1
 class IROTag(Enum): SHAREFACTORY_THEME = 0x1; SYSTEM_THEME = 0x2
 
 class PackageBase:
-    """
-    A base class for handling package files, providing common functionality
-    like file reading.
-    """
+    # A base class for handling package files.
     FLAG_ENCRYPTED = 0x80000000
     def __init__(self, file: str):
         if not os.path.isfile(file): raise FileNotFoundError(f"The PKG file '{file}' does not exist.")
@@ -96,9 +84,7 @@ class PackageBase:
         return data
 
 class PackagePS4(PackageBase):
-    """
-    A class specifically for parsing PS4 PKG file headers and metadata.
-    """
+    # A class for parsing PS4 PKG file headers and metadata.
     MAGIC_PS4 = 0x7f434E54
     def __init__(self, file: str):
         super().__init__(file)
@@ -125,9 +111,7 @@ class PackagePS4(PackageBase):
             self.files[file_id] = {"id": file_id, "offset": offset, "size": size}
 
 def parse_sfo(sfo_data):
-    """
-    Parses the binary param.sfo data to extract the package title.
-    """
+    # Parses the binary param.sfo data to extract the package title.
     try:
         magic, _, key_table_offset, data_table_offset, num_entries = struct.unpack('<IIIII', sfo_data[0:20])
         if magic != 0x46535000: return None
@@ -147,10 +131,7 @@ def parse_sfo(sfo_data):
 # --- Configuration and Cache Management ---
 
 def load_or_create_config():
-    """
-    Loads the application configuration from configs.json. If the file
-    doesn't exist, it creates a default one.
-    """
+    # Loads configs.json or creates a default one if it doesn't exist.
     if not os.path.exists(CONFIG_FILE_PATH):
         logging.warning(f"'{CONFIG_FILE_NAME}' not found. Creating a new one...")
         base_example_path = "C:\\Users\\YourUser\\Path\\To\\Your\\pkgs"
@@ -173,7 +154,7 @@ def load_or_create_config():
         logging.error(f"Fatal error reading '{CONFIG_FILE_NAME}': {e}"); raise
 
 def save_config(config_data):
-    """Saves the provided configuration data to configs.json."""
+    # Saves the provided configuration data to configs.json.
     try:
         with open(CONFIG_FILE_PATH, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, indent=4)
@@ -184,7 +165,7 @@ def save_config(config_data):
         return False
 
 def load_cache():
-    """Loads the PKG metadata cache from db.json."""
+    # Loads the PKG metadata cache from db.json.
     if os.path.exists(DB_FILE_PATH):
         try:
             with open(DB_FILE_PATH, 'r', encoding='utf-8') as f: return json.load(f)
@@ -192,13 +173,13 @@ def load_cache():
     return {}
 
 def save_cache(cache_data):
-    """Saves the provided cache data to db.json."""
+    # Saves the provided cache data to db.json.
     try:
         with open(DB_FILE_PATH, 'w', encoding='utf-8') as f: json.dump(cache_data, f, indent=4)
     except IOError as e: logging.error(f"Could not save cache: {e}")
 
 def format_file_size(size_bytes):
-    """Converts bytes into a human-readable string (MB or GB)."""
+    # Converts bytes into a human-readable string (MB or GB).
     if size_bytes == 0: return "0B"
     gb = size_bytes / (1024**3);
     if gb >= 1: return f"{gb:.2f} GB"
@@ -208,11 +189,7 @@ def format_file_size(size_bytes):
 # --- Core Scanning Logic ---
 
 def scan_and_cache_packages(pkg_folder_path, category_name, cache):
-    """
-    Scans a directory for .pkg files. For each file, it either retrieves
-    data from the cache or processes the file to extract metadata (title, icon)
-    and saves it to the cache.
-    """
+    # Scans a directory for .pkg files, extracts metadata, and updates the cache.
     logging.info(f"Scanning directory: [{category_name}] {pkg_folder_path}")
     if not os.path.isdir(pkg_folder_path):
         logging.warning(f"Path for '{category_name}' is not a directory, skipping.")
@@ -224,18 +201,18 @@ def scan_and_cache_packages(pkg_folder_path, category_name, cache):
         filename = os.path.basename(pkg_path)
         try:
             mtime = os.path.getmtime(pkg_path)
-            # If file is in cache and unmodified, use cached data.
+            # Use cached data if file is unchanged.
             if pkg_path in cache and cache[pkg_path].get('mtime') == mtime and 'install_url' in cache[pkg_path]:
                 cache[pkg_path]['category'] = category_name
                 pkg_data_list.append(cache[pkg_path])
                 continue
             
-            # Process the new or modified file.
+            # Process new or modified file.
             logging.info(f"Processing file: {filename}")
             pkg = PackagePS4(pkg_path)
             title = parse_sfo(pkg.read_file(PARAM_SFO_ID)) if PARAM_SFO_ID in pkg.files else None
             
-            # Extract and save the icon (ICON0.PNG).
+            # Extract and save the icon.
             image_path_rel = None
             if ICON0_ID in pkg.files:
                 image_base_name = sanitize_filename(pkg.content_id or os.path.splitext(filename)[0])
@@ -249,7 +226,7 @@ def scan_and_cache_packages(pkg_folder_path, category_name, cache):
             pkg_data = {
                 "filepath": pkg_path, "filename": filename, "title": title,
                 "content_id": pkg.content_id, "file_size_bytes": file_size,
-                "file_size_str": format_file_size(file_size), "image_path": image_path_rel, 
+                "file_size_str": format_file_size(file_size), "image_path": image_path_rel,
                 "mtime": mtime, "category": category_name,
                 "install_url": f"/serve_pkg/{category_name}/{filename}"
             }
@@ -260,10 +237,7 @@ def scan_and_cache_packages(pkg_folder_path, category_name, cache):
     return (pkg_data_list, set(pkg_files_on_disk))
 
 def clean_orphaned_cache_entries(cache, all_found_files_on_disk):
-    """
-    Removes entries from the cache that correspond to .pkg files which no longer
-    exist on disk.
-    """
+    # Removes cache entries for .pkg files that no longer exist.
     orphaned_keys = [key for key in cache if key not in all_found_files_on_disk]
     if orphaned_keys:
         logging.info(f"Cleaning {len(orphaned_keys)} orphaned entries from cache.")
@@ -273,28 +247,28 @@ def clean_orphaned_cache_entries(cache, all_found_files_on_disk):
 # --- Flask API Routes ---
 
 @app.route('/')
-def index(): 
-    """Serves the main HTML page for the web interface."""
+def index():
+    # Serves the main HTML page for the web interface.
     return send_from_directory('static', 'index.html')
 
 @app.route('/static/<path:path>')
-def send_static_file(path): 
-    """Serves static assets like CSS and JavaScript."""
+def send_static_file(path):
+    # Serves static assets like CSS and JavaScript.
     return send_from_directory('static', path)
 
 @app.route('/cached/<path:path>')
-def send_cached_image(path): 
-    """Serves cached package icons."""
+def send_cached_image(path):
+    # Serves cached package icons.
     return send_from_directory(CACHE_FOLDER_PATH, path)
 
 @app.route('/api/settings')
-def get_settings(): 
-    """Provides basic settings like the shop title to the frontend."""
+def get_settings():
+    # Provides basic settings like the shop title to the frontend.
     return jsonify({"shop_title": APP_CONFIG.get("shop_title", DEFAULT_SHOP_TITLE)})
 
 @app.route('/api/check_agent')
 def check_agent():
-    """Checks the User-Agent to determine if the client is a PS5."""
+    # Checks the User-Agent to determine if the client is a PS5.
     user_agent = request.headers.get('User-Agent', '')
     is_ps5 = "PlayStation 5" in user_agent
     logging.info(f"User-Agent Check: '{user_agent}' -> is_ps5: {is_ps5}")
@@ -302,10 +276,7 @@ def check_agent():
 
 @app.route('/api/scan', methods=['GET'])
 def api_scan_packages():
-    """
-    Triggers a full scan of all configured PKG directories, updates the
-    cache, and returns a JSON list of all found packages.
-    """
+    # Triggers a full scan of all configured PKG directories and updates the cache.
     paths = APP_CONFIG.get("paths")
     if not paths: return jsonify({"error": "PKG paths not configured."}), 500
     try:
@@ -323,9 +294,7 @@ def api_scan_packages():
 
 @app.route('/serve_pkg/<category>/<path:filename>')
 def serve_pkg_file(category, filename):
-    """
-    Serves a specific .pkg file for download/installation on the console.
-    """
+    # Serves a specific .pkg file for download/installation.
     directory_path = APP_CONFIG.get("paths", {}).get(category)
     if not directory_path or not os.path.isdir(directory_path): return "Invalid category", 404
     logging.info(f"Serving file: {filename} from {directory_path}")
@@ -336,11 +305,7 @@ def serve_pkg_file(category, filename):
 # --- Flask Server Runner ---
 
 def run_flask_app(config, log_queue):
-    """
-    This function is the entry point for the separate server process.
-    It sets up logging to communicate back to the GUI and starts the
-    Waitress WSGI server.
-    """
+    # Entry point for the server process, configures logging and starts the server.
     queue_handler = QueueHandler(log_queue)
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
@@ -355,14 +320,10 @@ def run_flask_app(config, log_queue):
 
 # ===================================================================
 # PART 2: GRAPHICAL USER INTERFACE (GUI) WITH TKINTER
-# This section defines the desktop application window, its controls,
-# and the logic for managing the server process.
 # ===================================================================
 
 class AppGUI(tk.Tk):
-    """
-    The main application class for the Tkinter control panel.
-    """
+    # The main application class for the Tkinter control panel.
     def __init__(self):
         super().__init__()
         self.title("PS5 PKG Server Control Panel")
@@ -375,7 +336,7 @@ class AppGUI(tk.Tk):
         self.process_log_queue()
 
     def create_widgets(self):
-        """Initializes and lays out all the GUI elements."""
+        # Initializes and lays out all the GUI elements.
         main_frame = ttk.Frame(self, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
         # --- Settings Frame ---
@@ -430,13 +391,13 @@ class AppGUI(tk.Tk):
     def _show_hand_cursor(self, event): self.config(cursor="hand2")
     def _show_arrow_cursor(self, event): self.config(cursor="")
     def _open_link(self, event):
-        """Opens a URL when a hyperlink in the log is clicked."""
+        # Opens a URL when a hyperlink in the log is clicked.
         tag_name = next((tag for tag in self.log_text.tag_names(self.log_text.index(f"@{event.x},{event.y}")) if tag.startswith("hlink-")), None)
         if tag_name in self.hyperlink_map:
             webbrowser.open_new_tab(self.hyperlink_map[tag_name])
             
     def setup_logging(self):
-        """Configures the root logger to send messages to the GUI's log widget."""
+        # Configures the root logger to send messages to the GUI's log widget.
         root_logger = logging.getLogger()
         root_logger.handlers.clear()
         root_logger.setLevel(logging.INFO)
@@ -446,10 +407,7 @@ class AppGUI(tk.Tk):
         root_logger.addHandler(text_handler)
 
     def process_log_queue(self):
-        """
-        Periodically checks the multiprocessing queue for log records from the
-        server process and displays them in the GUI.
-        """
+        # Periodically checks the multiprocessing queue for log records from the server process.
         try:
             while True:
                 record = self.log_queue.get_nowait()
@@ -460,7 +418,7 @@ class AppGUI(tk.Tk):
         self.after(100, self.process_log_queue)
 
     def load_config_to_gui(self):
-        """Loads settings from configs.json and populates the GUI fields."""
+        # Loads settings from configs.json and populates the GUI fields.
         global APP_CONFIG
         APP_CONFIG = load_or_create_config()
         self.shop_title_var.set(APP_CONFIG.get("shop_title", DEFAULT_SHOP_TITLE))
@@ -470,7 +428,7 @@ class AppGUI(tk.Tk):
             self.tree.insert("", tk.END, values=(category, path))
 
     def save_gui_config(self):
-        """Reads values from the GUI fields and saves them to configs.json."""
+        # Reads values from the GUI fields and saves them to configs.json.
         try:
             new_config = {
                 "shop_title": self.shop_title_var.get(),
@@ -488,17 +446,17 @@ class AppGUI(tk.Tk):
 
     # --- Path Management Methods ---
     def add_path(self):
-        """Opens a dialog to add a new category and path."""
+        # Opens a dialog to add a new category and path.
         dialog = PathDialog(self, title="Add Path")
         if dialog.result: self.tree.insert("", tk.END, values=dialog.result)
 
     def remove_path(self):
-        """Removes the selected path from the treeview."""
+        # Removes the selected path from the treeview.
         if (selected_item := self.tree.selection()) and messagebox.askyesno("Confirm", "Remove selected path?"):
             self.tree.delete(selected_item)
     
     def edit_path(self):
-        """Opens a dialog to edit the selected category and path."""
+        # Opens a dialog to edit the selected category and path.
         if not (selected_item := self.tree.selection()): return
         category, path = self.tree.item(selected_item)['values']
         dialog = PathDialog(self, title="Edit Path", initial_category=category, initial_path=path)
@@ -506,9 +464,7 @@ class AppGUI(tk.Tk):
 
     # --- Server Control Methods ---
     def start_server(self):
-        """
-        Starts the Flask server in a new process.
-        """
+        # Starts the Flask server in a new process.
         if self.server_process and self.server_process.is_alive():
             logging.warning("Server is already running.")
             return
@@ -523,7 +479,7 @@ class AppGUI(tk.Tk):
         self.after(2000, self.check_server_status)
 
     def check_server_status(self):
-        """Checks if the server process is alive and updates the GUI status."""
+        # Checks if the server process is alive and updates the GUI status.
         if self.server_process and self.server_process.is_alive():
             self.update_status("Running", "green")
             self.stop_button.config(state=tk.NORMAL)
@@ -537,7 +493,7 @@ class AppGUI(tk.Tk):
                 self.server_process = None
 
     def stop_server(self):
-        """Terminates the server process."""
+        # Terminates the server process.
         if not (self.server_process and self.server_process.is_alive()):
             logging.warning("Server is not running.")
             self.check_server_status()
@@ -552,7 +508,7 @@ class AppGUI(tk.Tk):
         self.check_server_status()
 
     def save_button_state(self, state):
-        """Disables or enables all 'Save' buttons to prevent config changes while the server is running."""
+        # Disables or enables all 'Save' buttons.
         for child in self.winfo_children():
             if isinstance(child, ttk.LabelFrame):
                 for btn in child.winfo_children():
@@ -560,16 +516,16 @@ class AppGUI(tk.Tk):
                         btn.config(state=state)
                 for frame in child.winfo_children():
                     if isinstance(frame, ttk.Frame):
-                         for btn in frame.winfo_children():
-                             if isinstance(btn, ttk.Button) and "save" in btn.cget("text").lower():
-                                 btn.config(state=state)
+                          for btn in frame.winfo_children():
+                              if isinstance(btn, ttk.Button) and "save" in btn.cget("text").lower():
+                                  btn.config(state=state)
 
     def update_status(self, text, color):
-        """Updates the status label text and color."""
+        # Updates the status label text and color.
         self.status_label.config(text=f"Status: {text}", foreground=color)
 
     def on_closing(self):
-        """Handles the window close event, ensuring the server is stopped."""
+        # Handles the window close event, ensuring the server is stopped.
         if self.server_process and self.server_process.is_alive():
             if messagebox.askyesno("Exit", "The server is running. Stop server and exit?"):
                 self.stop_server()
@@ -580,10 +536,7 @@ class AppGUI(tk.Tk):
 # --- GUI Helper Classes ---
 
 class TextHandler(logging.Handler):
-    """
-    A custom logging handler that redirects log records to a Tkinter Text widget.
-    It also detects and formats URLs as clickable hyperlinks.
-    """
+    # A custom logging handler that redirects log records to a Tkinter Text widget.
     def __init__(self, text_widget, app_gui_instance):
         super().__init__()
         self.text_widget = text_widget
@@ -617,9 +570,7 @@ class TextHandler(logging.Handler):
         self.text_widget.yview(tk.END)
 
 class PathDialog(tk.Toplevel):
-    """
-    A modal dialog window for adding or editing a category and its associated path.
-    """
+    # A modal dialog window for adding or editing a category and its associated path.
     def __init__(self, parent, title=None, initial_category="", initial_path=""):
         super().__init__(parent)
         self.transient(parent); self.title(title or "Path"); self.result = None
@@ -652,7 +603,7 @@ class PathDialog(tk.Toplevel):
 
 if __name__ == '__main__':
     # freeze_support() is necessary for multiprocessing in bundled executables.
-    freeze_support() 
+    freeze_support()
     gui = AppGUI()
     gui.setup_logging()
     logging.info("Application started. Configure and press 'Start Server'.")
