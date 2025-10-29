@@ -1,5 +1,8 @@
 {
-	"shop_title": "PS5 PKG Virtual Shop",
+    "shop_title": "PS5 PKG Virtual Shop",
+    "port": 5000,
+    "scan_on_startup": false,
+    "docker": false,
     "paths": {
         "games": "C:\\pkgs\\games",
         "media": "C:\\pkgs\\media",
