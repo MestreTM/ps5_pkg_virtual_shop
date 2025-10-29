@@ -17,6 +17,19 @@
         </div>
     </div>
 
+    <div id="pack-modal" class="blocker hidden">
+        <div class="modal-content">
+            <h2 id="pack-modal-title">Install Pack?</h2>
+            <p>You are about to install all packages in this pack:</p>
+            <ul id="pack-modal-list" class="pack-list-scroll">
+            </ul>
+            <div class="modal-buttons">
+                <button id="pack-modal-cancel" class="btn-modal btn-cancel">Cancel</button>
+                <button id="pack-modal-confirm" class="btn-modal btn-confirm">Install All</button>
+            </div>
+        </div>
+    </div>
+
     <header>
         <h1 id="shop-title">PKG Viewer</h1>
         <div class="search-container">
@@ -31,7 +44,7 @@
     </div>
 
     <main id="content-area">
-        </main>
+    </main>
 
     <footer>
         <div class="navigation-hint">
@@ -89,20 +102,22 @@
             }, 4000);
         }
 
-        function installPkg(pkgUrl) {
-            showToast("Sending command to PS5...", true);
-
+        function sendPkgToInstaller(pkgUrl) {
             const formData = new FormData();
             formData.append("url", pkgUrl); 
-
             const ip = window.__detectedIP || "127.0.0.1";
             const installServerUrl = `http://${ip}:12800/upload`;
 
-            fetch(installServerUrl, { 
+            return fetch(installServerUrl, { 
                 method: "POST", 
                 body: formData, 
                 mode: "no-cors" 
-            })
+            });
+        }
+
+        function installPkg(pkgUrl) {
+            showToast("Sending command to PS5...", true);
+            sendPkgToInstaller(pkgUrl)
                 .then(() => {
                     showToast("Download started on PS5!", true);
                 })
