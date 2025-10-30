@@ -5,6 +5,7 @@
 The application runs on your computer and serves a clean, controller-friendly web UI directly to your PS5’s browser, allowing one-click installation via **etaHEN’s Direct Package Installer**.
 
 #### ⚠️ Attention - At the moment the script only accepts the ps4 PKG format.
+#### ⚠️ 2.3b EtaHen version is recommended!
 
 ---
 
@@ -153,6 +154,7 @@ Replace `<YOUR_PC_IP>` with the IP address you found earlier.
 
 ## 🙏 Acknowledgments
 
+- Thanks [@Andy2000211](https://github.com/Andy2000211) for helping me test this code over and over again.
 - Thanks to the developers of **Flask** and **Pillow**.  
 - Huge appreciation to the **PlayStation homebrew community** for their amazing work on exploits and tools like **etaHEN**.  
 - Based on **mour0ne shop**.  
