@@ -33,7 +33,9 @@
     <header>
         <h1 id="shop-title">PKG Viewer</h1>
         <div class="search-container">
-            <input type="search" id="search-bar" placeholder="Search packages by title...">
+            <input type="search" id="search-bar" placeholder="Search all packages...">
+            <button id="search-button">Search</button>
+            <button id="clear-button" class="hidden">Clear</button>
         </div>
         <nav id="tabs" class="tabs"></nav>
     </header>
@@ -44,6 +46,15 @@
     </div>
 
     <main id="content-area">
+        <div id="search-pane" class="content-pane">
+            <h2 id="search-title" class="hidden">Search Results</h2>
+            <div class="gallery"></div>
+            <div class="pagination-controls hidden">
+                <button class="btn-prev" disabled>Previous</button>
+                <span class="page-info">Page 1 / 1</span>
+                <button class="btn-next" disabled>Next</button>
+            </div>
+        </div>
     </main>
 
     <footer>
@@ -90,16 +101,18 @@
         const warningMessage = `Failed! Please enable etaHEN / DPI v2.`;
         const toast = document.getElementById("install-toast");
         
-        function showToast(message, isSuccess = true) {
+        function showToast(message, isSuccess = true, duration = 4000) {
             toast.classList.remove('hidden');
             toast.classList.toggle('success', isSuccess);
             toast.classList.toggle('failure', !isSuccess);
             toast.innerHTML = (isSuccess ? successIcon : warningIcon) + message;
 
             clearTimeout(window._toastTimeout);
-            window._toastTimeout = setTimeout(() => {
-                toast.classList.add('hidden');
-            }, 4000);
+            if (duration > 0) {
+                window._toastTimeout = setTimeout(() => {
+                    toast.classList.add('hidden');
+                }, duration);
+            }
         }
 
         function sendPkgToInstaller(pkgUrl) {
