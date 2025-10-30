@@ -14,6 +14,7 @@ from logging.handlers import QueueHandler
 import webbrowser
 import math
 import socket
+import hashlib
 
 from waitress import serve
 from PIL import Image
@@ -92,7 +93,7 @@ class PackagePS4(PackageBase):
             unpacked = struct.unpack(header_format, data)
             self.pkg_entry_count = unpacked[4]
             self.pkg_table_offset = unpacked[7]
-            self.content_id = self._safe_decode(unpacked[13])
+            self.content_id = self._safe_decode(unpacked[14])
             self.__load_files(fp)
         except Exception as e:
             logging.error(f"Error loading PS4 PKG file: {str(e)}"); raise
@@ -181,9 +182,6 @@ def format_file_size(size_bytes):
     return f"{mb:.2f} MB"
 
 def get_local_ips():
-    """
-    Gets a list of local IPv4 addresses.
-    """
     ip_list = []
     try:
         hostname = socket.gethostname()
@@ -221,60 +219,66 @@ def scan_and_cache_packages(pkg_folder_path, category_name, cache):
         filename = os.path.basename(pkg_path)
         try:
             mtime = os.path.getmtime(pkg_path)
-
-            if (pkg_path in cache and
-                cache[pkg_path].get('mtime') == mtime and
-                'install_url' in cache[pkg_path] and
-                'category_type' in cache[pkg_path]):
-                cache[pkg_path]['category'] = category_name
-                pkg_data_list.append(cache[pkg_path])
-                continue
-
-            logging.info(f"Processing file: {filename}")
-            pkg = PackagePS4(pkg_path)
-
-            sfo_info = {}
-            if PARAM_SFO_ID in pkg.files:
-                try: sfo_info = parse_sfo(pkg.read_file(PARAM_SFO_ID))
-                except Exception: pass
-
-            title = sfo_info.get("title")
-            category_type = sfo_info.get("category")
-            title_id = sfo_info.get("title_id")
-
-            image_path_rel = None
-            if ICON0_ID in pkg.files:
-                image_base_name = sanitize_filename(pkg.content_id or os.path.splitext(filename)[0])
-                if image_base_name:
-                    image_filename = f"{image_base_name}.png"
-                    image_save_path_abs = os.path.join(CACHE_FOLDER_PATH, image_filename)
-                    Image.open(io.BytesIO(pkg.read_file(ICON0_ID))).save(image_save_path_abs, format="PNG")
-                    image_path_rel = f"{CACHE_FOLDER_NAME}/{image_filename}"
-
-            file_size = os.path.getsize(pkg_path)
-            install_url = ""
-
-            if pkg.content_id:
-                install_url = f"/serve_pkg_id/{pkg.content_id}"
+            
+            if (pkg_path in cache and cache[pkg_path].get('mtime') == mtime):
+                pkg_data = cache[pkg_path]
+                pkg_data['category'] = category_name
             else:
-                safe_category = category_name.replace(' ', '_').replace('/', '_')
-                safe_filename = filename.replace(' ', '_').replace('/', '_')
-                install_url = f"/serve_pkg_path/{safe_category}/{safe_filename}"
+                logging.info(f"Processing file: {filename}")
+                pkg = PackagePS4(pkg_path)
 
-            pkg_data = {
-                "filepath": pkg_path, "filename": filename, "title": title,
-                "content_id": pkg.content_id, "file_size_bytes": file_size,
-                "file_size_str": format_file_size(file_size), "image_path": image_path_rel,
-                "mtime": mtime, "category": category_name,
-                "category_type": category_type, "title_id": title_id,
-                "install_url": install_url
-            }
+                sfo_info = parse_sfo(pkg.read_file(PARAM_SFO_ID)) if PARAM_SFO_ID in pkg.files else {}
+                
+                pkg_data = {
+                    "filepath": pkg_path,
+                    "filename": filename,
+                    "title": sfo_info.get("title"),
+                    "content_id": pkg.content_id,
+                    "category_type": sfo_info.get("category"),
+                    "title_id": sfo_info.get("title_id"),
+                    "mtime": mtime
+                }
+            
+            unique_id = pkg_data.get("content_id")
+            if unique_id:
+                install_url = f"/serve_pkg_id/{unique_id}"
+                image_base_name = sanitize_filename(unique_id)
+            else:
+                file_hash = hashlib.md5(os.path.abspath(pkg_path).encode('utf-8')).hexdigest()
+                install_url = f"/serve_pkg_hash/{file_hash}"
+                pkg_data['file_hash'] = file_hash 
+                image_base_name = file_hash
+
+            pkg_data['install_url'] = install_url
+
+            if 'image_path' not in pkg_data or not os.path.exists(os.path.join(BASE_DIR, pkg_data['image_path'])):
+                if image_base_name and PARAM_SFO_ID in pkg.files: # Re-read SFO to get ICON
+                    try:
+                        pkg_for_icon = PackagePS4(pkg_path)
+                        if ICON0_ID in pkg_for_icon.files:
+                            image_filename = f"{image_base_name}.png"
+                            image_save_path_abs = os.path.join(CACHE_FOLDER_PATH, image_filename)
+                            Image.open(io.BytesIO(pkg_for_icon.read_file(ICON0_ID))).save(image_save_path_abs, format="PNG")
+                            pkg_data['image_path'] = f"{CACHE_FOLDER_NAME}/{image_filename}"
+                        else:
+                            pkg_data['image_path'] = None
+                    except Exception:
+                         pkg_data['image_path'] = None
+                else:
+                    pkg_data['image_path'] = None
+            
+            file_size = os.path.getsize(pkg_path)
+            pkg_data['file_size_bytes'] = file_size
+            pkg_data['file_size_str'] = format_file_size(file_size)
+            
             cache[pkg_path] = pkg_data
             pkg_data_list.append(pkg_data)
+
         except Exception as e:
             logging.error(f"Failed to process {filename}: {e}")
 
     return (pkg_data_list, set(pkg_files_on_disk))
+
 
 def clean_orphaned_cache_entries(cache, all_found_files_on_disk):
     orphaned_keys = [key for key in cache if key not in all_found_files_on_disk]
@@ -284,9 +288,6 @@ def clean_orphaned_cache_entries(cache, all_found_files_on_disk):
     return cache
 
 def perform_full_scan():
-    """
-    Executes a full scan, updates the cache, and populates in-memory lookups.
-    """
     paths = APP_CONFIG.get("paths")
     if not paths:
         logging.error("Scan failed: PKG paths not configured.")
@@ -361,11 +362,8 @@ def perform_full_scan():
         for pkg_path, data in cache.items():
             if data.get("content_id"):
                 PKG_LOOKUP[data["content_id"]] = pkg_path
-            else:
-                safe_category = data['category'].replace(' ', '_').replace('/', '_')
-                safe_filename = data['filename'].replace(' ', '_').replace('/', '_')
-                fallback_key = f"{safe_category}/{safe_filename}"
-                PKG_LOOKUP[fallback_key] = pkg_path
+            if data.get("file_hash"):
+                PKG_LOOKUP[data["file_hash"]] = pkg_path
 
         logging.info(f"Built lookup map with {len(PKG_LOOKUP)} entries.")
         non_empty_categories = sorted(list(CATEGORIZED_DATA.keys()))
@@ -405,13 +403,10 @@ def check_agent():
 def api_scan_packages():
     try:
         if APP_CONFIG.get("scan_on_startup", False):
-            logging.info("Returning pre-scanned categories.")
             non_empty_categories = sorted(list(CATEGORIZED_DATA.keys()))
-            return jsonify({"categories": non_empty_categories})
         else:
-            logging.info("Performing on-demand scan...")
             non_empty_categories = perform_full_scan()
-            return jsonify({"categories": non_empty_categories})
+        return jsonify({"categories": non_empty_categories})
     except Exception as e:
         logging.error(f"Error in /api/scan endpoint: {e}", exc_info=True)
         return jsonify({"error": f"Internal server error: {e}"}), 500
@@ -464,37 +459,28 @@ def search_all_items():
         'total_pages': total_pages,
     })
 
-
 # --- Serve Routes ---
-
 @app.route('/serve_pkg_id/<content_id>')
 def serve_pkg_id(content_id):
     pkg_path = PKG_LOOKUP.get(content_id)
     if not pkg_path or not os.path.exists(pkg_path):
         logging.error(f"Could not find PKG for Content ID: {content_id}")
-        return "File not found in lookup (ID)", 404
+        return "File not found by ID", 404
     directory = os.path.dirname(pkg_path)
     filename = os.path.basename(pkg_path)
     logging.info(f"Serving (by ID): {filename} from {directory}")
-    try:
-        return send_from_directory(directory, filename, as_attachment=True)
-    except FileNotFoundError:
-        return "File not found", 404
-
-@app.route('/serve_pkg_path/<category>/<path:filename>')
-def serve_pkg_path(category, filename):
-    fallback_key = f"{category}/{filename}"
-    pkg_path = PKG_LOOKUP.get(fallback_key)
+    return send_from_directory(directory, filename, as_attachment=True)
+    
+@app.route('/serve_pkg_hash/<file_hash>')
+def serve_pkg_hash(file_hash):
+    pkg_path = PKG_LOOKUP.get(file_hash)
     if not pkg_path or not os.path.exists(pkg_path):
-        logging.error(f"Could not find PKG for path key: {fallback_key}")
-        return "File not found in lookup (Path)", 404
+        logging.error(f"Could not find PKG for hash: {file_hash}")
+        return "File not found by hash", 404
     directory = os.path.dirname(pkg_path)
     filename = os.path.basename(pkg_path)
-    logging.info(f"Serving (by Path): {filename} from {directory}")
-    try:
-        return send_from_directory(directory, filename, as_attachment=True)
-    except FileNotFoundError:
-        return "File not found", 404
+    logging.info(f"Serving (by hash): {filename} from {directory}")
+    return send_from_directory(directory, filename, as_attachment=True)
 
 # --- Server Runner ---
 
@@ -513,24 +499,7 @@ def run_flask_app(config, log_queue=None):
         logging.info("Config 'scan_on_startup' is TRUE. Performing full scan now...")
         perform_full_scan()
         logging.info("Startup scan complete.")
-    else:
-        logging.info("Config 'scan_on_startup' is FALSE. Loading lookup map from cache...")
-        try:
-            cache = load_cache()
-            global PKG_LOOKUP
-            PKG_LOOKUP.clear()
-            for pkg_path, data in cache.items():
-                if data.get("content_id"):
-                    PKG_LOOKUP[data["content_id"]] = pkg_path
-                elif data.get("category") and data.get("filename"):
-                    safe_category = data['category'].replace(' ', '_').replace('/', '_')
-                    safe_filename = data['filename'].replace(' ', '_').replace('/', '_')
-                    fallback_key = f"{safe_category}/{safe_filename}"
-                    PKG_LOOKUP[fallback_key] = pkg_path
-            logging.info(f"Pre-populated lookup map with {len(PKG_LOOKUP)} entries.")
-        except Exception as e:
-            logging.error(f"Failed to pre-populate lookup map: {e}")
-
+    
     port = APP_CONFIG.get('port', DEFAULT_PORT)
     logging.info(f"Server starting on port {port}...")
     logging.info(f" - For this PC: http://127.0.0.1:{port}")
@@ -547,9 +516,6 @@ def run_flask_app(config, log_queue=None):
 # ===================================================================
 
 class AppGUI(tk.Tk):
-    """
-    The main application class for the Tkinter control panel.
-    """
     def __init__(self):
         super().__init__()
         self.title("PS5 PKG Server Control Panel")
@@ -562,9 +528,6 @@ class AppGUI(tk.Tk):
         self.process_log_queue()
 
     def create_widgets(self):
-        """
-        Initializes and lays out all the GUI elements.
-        """
         main_frame = ttk.Frame(self, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
