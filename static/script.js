@@ -373,41 +373,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function installAllPkgs(items) {
+    function installAllPkgs(items) {
         if (!items || items.length === 0) {
             closePackModal();
             return;
         }
         
         closePackModal();
-        let failed = false;
-        
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            showToast(`Sending ${i + 1} of ${items.length}: ${item.title}...`, true, 0);
+        const originalItems = [...items]; 
 
+        function sendNextPkg(index) {
+            if (index >= originalItems.length) {
+                showToast(`All ${originalItems.length} downloads started on PS5!`, true);
+                return;
+            }
+
+            const item = originalItems[index];
             const ip = window.location.hostname;
             const port = window.location.port;
             const pkgUrl = `http://${ip}${port ? ':' + port : ''}${item.install_url}`;
-            
-            try {
-                await window.sendPkgToInstaller(pkgUrl);
-            } catch (err) {
-                console.error("A pack item failed to send:", err);
-                failed = true;
-                break; 
-            }
 
-            if (i < items.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
+            showToast(`Sending ${index + 1} of ${originalItems.length}: ${item.title}...`, true, 0);
+
+            window.sendPkgToInstaller(pkgUrl)
+                .then(() => {
+                    setTimeout(() => {
+                        sendNextPkg(index + 1);
+                    }, 150); 
+                })
+                .catch(err => {
+                    console.error("A pack item failed to send:", err);
+                    showToast(warningMessage, false);
+                });
         }
 
-        if (failed) {
-            showToast(warningMessage, false);
-        } else {
-            showToast(`All ${items.length} downloads started on PS5!`, true);
-        }
+        sendNextPkg(0);
     }
     
     initializeApp();
