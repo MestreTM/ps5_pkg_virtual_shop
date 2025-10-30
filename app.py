@@ -397,7 +397,7 @@ def get_settings():
 @app.route('/api/check_agent')
 def check_agent():
     user_agent = request.headers.get('User-Agent', '')
-    is_ps5 = "" in user_agent
+    is_ps5 = "PlayStation 5" in user_agent
     logging.info(f"User-Agent Check: '{user_agent}' -> is_ps5: {is_ps5}")
     return jsonify({"is_ps5": is_ps5})
 
