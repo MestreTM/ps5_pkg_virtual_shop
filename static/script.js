@@ -1,26 +1,26 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- DOM Element References ---
     const tabsContainer = document.getElementById('tabs');
     const contentContainer = document.getElementById('content-area');
     const loading = document.getElementById('loading');
     const blocker = document.getElementById('ps5-blocker');
     const searchBar = document.getElementById('search-bar');
+    const searchButton = document.getElementById('search-button');
+    const clearButton = document.getElementById('clear-button');
     const shopTitleElement = document.getElementById('shop-title');
+    
+    const searchPane = document.getElementById('search-pane');
+    const searchTitle = document.getElementById('search-title');
 
-    // --- Pack Modal References ---
     const packModal = document.getElementById('pack-modal');
     const packModalTitle = document.getElementById('pack-modal-title');
     const packModalList = document.getElementById('pack-modal-list');
     const packModalCancel = document.getElementById('pack-modal-cancel');
     const packModalConfirm = document.getElementById('pack-modal-confirm');
 
-    // --- State Management ---
-    let pageState = {}; // Stores the current page for each category
-    let currentItemCache = {}; // Caches the items for the current page of each category
+    let pageState = {};
+    let activeSearchQuery = '';
+    let isSearchActive = false;
 
-    // --- Initialization ---
-
-    // Main entry point
     async function initializeApp() {
         await loadSettings();
         checkUserAgent();
@@ -29,7 +29,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setupControllerNavigation();
     }
 
-    // Fetches and applies application settings
     async function loadSettings() {
         try {
             const response = await fetch('/api/settings');
@@ -44,7 +43,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Checks if the client is a PS5
     async function checkUserAgent() {
         try {
             const response = await fetch('/api/check_agent');
@@ -63,13 +61,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Data Fetching and UI Building ---
-
-    // Fetches the category list, processes it, and renders the UI.
     async function initializeScanner() {
         loading.classList.remove('hidden');
         tabsContainer.innerHTML = '';
-        contentContainer.innerHTML = '';
+        const categoryPanes = contentContainer.querySelectorAll('.category-pane');
+        categoryPanes.forEach(pane => pane.remove());
 
         try {
             const response = await fetch(`/api/scan`);
@@ -77,12 +73,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const errorData = await response.json();
                 throw new Error(errorData.error || `Error ${response.status}`);
             }
-            const data = await response.json(); // Expects {"categories": [...]}
+            const data = await response.json();
             const categories = data.categories || [];
             
             if (categories.length > 0) {
                 renderTabsAndPanes(categories);
-                activateTab(categories[0]); // Activate the first tab
+                activateTab(categories[0]);
             } else {
                 contentContainer.innerHTML = '<p style="text-align: center;">No .pkg files found.</p>';
             }
@@ -95,93 +91,121 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // Creates the category tabs and their corresponding content panes.
     function renderTabsAndPanes(categories) {
         categories.forEach(categoryName => {
-            pageState[categoryName] = 1; // Default to page 1
-            currentItemCache[categoryName] = []; // Init item cache
+            pageState[categoryName] = 1;
 
-            // Create Tab Button
             const tabButton = document.createElement('button');
             tabButton.textContent = categoryName;
             tabButton.dataset.category = categoryName;
             tabButton.addEventListener('click', () => activateTab(categoryName));
             tabsContainer.appendChild(tabButton);
 
-            // Create Content Pane
             const tabPane = document.createElement('div');
             tabPane.id = `pane-${categoryName}`;
-            tabPane.className = 'content-pane'; // Not hidden, 'active' class will control this
+            tabPane.className = 'content-pane category-pane';
             tabPane.innerHTML = `
                 <div class="gallery"></div>
                 <div class="pagination-controls hidden">
-                    <button class="btn-prev" disabled>Previous Page</button>
+                    <button class="btn-prev" disabled>Previous</button>
                     <span class="page-info">Page 1 / 1</span>
-                    <button class="btn-next" disabled>Next Page</button>
+                    <button class="btn-next" disabled>Next</button>
                 </div>
             `;
             contentContainer.appendChild(tabPane);
         });
     }
 
-    // Handles tab switching logic
     function activateTab(categoryName) {
+        isSearchActive = false;
+        activeSearchQuery = '';
+        searchBar.value = '';
+        
+        tabsContainer.classList.remove('hidden');
+        searchPane.classList.remove('active');
+        searchTitle.classList.add('hidden');
+        clearButton.classList.add('hidden');
+
         tabsContainer.querySelectorAll('button').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.category === categoryName);
         });
-        contentContainer.querySelectorAll('.content-pane').forEach(pane => {
+        contentContainer.querySelectorAll('.category-pane').forEach(pane => {
             pane.classList.toggle('active', pane.id === `pane-${categoryName}`);
         });
         
-        // Fetch data for this tab.
-        // It will automatically fetch page 1 if not visited, or the stored page.
         fetchAndRenderPage(categoryName, pageState[categoryName]);
     }
     
-    // Fetches a specific page of data for a specific category
     async function fetchAndRenderPage(categoryName, page) {
-        loading.classList.remove('hidden'); // Show global loader
+        loading.classList.remove('hidden');
         const pane = document.getElementById(`pane-${categoryName}`);
-        if (!pane) return; // Should not happen
+        if (!pane) return;
 
         const gallery = pane.querySelector('.gallery');
-        gallery.innerHTML = ''; // Clear gallery on page load
+        gallery.innerHTML = '';
 
         try {
             const response = await fetch(`/api/items?category=${categoryName}&page=${page}`);
             if (!response.ok) throw new Error(`Error fetching items for ${categoryName}`);
-
-            const data = await response.json(); // { items: [], current_page, total_pages }
+            const data = await response.json();
             
-            currentItemCache[categoryName] = data.items || [];
-            pageState[categoryName] = data.current_page || 1;
-
-            renderGallery(pane, currentItemCache[categoryName]);
-            updatePagination(pane, categoryName, data.current_page, data.total_pages);
+            renderGallery(pane, data.items || []);
+            const pageChangeCallback = (newPage) => fetchAndRenderPage(categoryName, newPage);
+            updatePagination(pane, data.current_page, data.total_pages, pageChangeCallback);
 
         } catch (error) {
             console.error('Error in fetchAndRenderPage:', error);
             gallery.innerHTML = `<p style="color: #ff5555; text-align: center;">Error: ${error.message}</p>`;
         } finally {
             loading.classList.add('hidden');
-            searchBar.value = ''; // Clear search when changing pages
         }
     }
 
-    // Renders a list of items into the gallery of a specific pane
+    async function fetchAndRenderSearchResults(query, page) {
+        loading.classList.remove('hidden');
+        isSearchActive = true;
+        
+        contentContainer.querySelectorAll('.category-pane').forEach(p => p.classList.remove('active'));
+        tabsContainer.classList.add('hidden');
+        searchPane.classList.add('active');
+        searchTitle.classList.remove('hidden');
+        searchTitle.textContent = `Results for: "${query}"`;
+        clearButton.classList.remove('hidden');
+        
+        const gallery = searchPane.querySelector('.gallery');
+        gallery.innerHTML = '';
+
+        try {
+            const url = `/api/search?search=${encodeURIComponent(query)}&page=${page}`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Error performing search');
+
+            const data = await response.json();
+            renderGallery(searchPane, data.items || []);
+            const pageChangeCallback = (newPage) => fetchAndRenderSearchResults(query, newPage);
+            updatePagination(searchPane, data.current_page, data.total_pages, pageChangeCallback);
+
+        } catch (error) {
+            console.error('Error in fetchAndRenderSearchResults:', error);
+            gallery.innerHTML = `<p style="color: #ff5555; text-align: center;">Error: ${error.message}</p>`;
+        } finally {
+            loading.classList.add('hidden');
+        }
+    }
+
+
     function renderGallery(pane, items) {
         const gallery = pane.querySelector('.gallery');
         gallery.innerHTML = '';
 
         if (items.length === 0) {
-            gallery.innerHTML = '<p style="text-align: center;">No packages found in this section.</p>';
+            gallery.innerHTML = '<p style="text-align: center;">No packages found.</p>';
             return;
         }
         
         items.forEach(pkg => renderPkgCard(pkg, gallery));
     }
 
-    // Creates and appends the HTML for a single package card.
     function renderPkgCard(pkg, container) {
         const cardButton = document.createElement('button');
         cardButton.className = 'pkg-card'; 
@@ -223,10 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
         container.appendChild(cardButton);
     }
 
-    // --- UI Event Listeners ---
-
-    // Updates the pagination button states and text for a specific pane
-    function updatePagination(pane, categoryName, currentPage, totalPages) {
+    function updatePagination(pane, currentPage, totalPages, pageChangeCallback) {
         const controls = pane.querySelector('.pagination-controls');
         const prevBtn = pane.querySelector('.btn-prev');
         const nextBtn = pane.querySelector('.btn-next');
@@ -237,9 +258,8 @@ document.addEventListener('DOMContentLoaded', () => {
             prevBtn.disabled = (currentPage === 1);
             nextBtn.disabled = (currentPage === totalPages);
             
-            // Set click handlers dynamically
-            prevBtn.onclick = () => fetchAndRenderPage(categoryName, currentPage - 1);
-            nextBtn.onclick = () => fetchAndRenderPage(categoryName, currentPage + 1);
+            prevBtn.onclick = () => pageChangeCallback(currentPage - 1);
+            nextBtn.onclick = () => pageChangeCallback(currentPage + 1);
 
             controls.classList.remove('hidden');
         } else {
@@ -247,37 +267,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Sets up the live search listener
     function setupSearchListener() {
-        searchBar.addEventListener('input', (e) => {
-            const searchTerm = e.target.value.toLowerCase().trim();
-            const activeTab = tabsContainer.querySelector('button.active');
-            if (!activeTab) return;
-
-            const categoryName = activeTab.dataset.category;
-            const pane = document.getElementById(`pane-${categoryName}`);
-            const pagination = pane.querySelector('.pagination-controls');
-            
-            const itemsToFilter = currentItemCache[categoryName] || [];
-
+        const performSearch = () => {
+            const searchTerm = searchBar.value.trim();
             if (searchTerm) {
-                const filtered = itemsToFilter.filter(pkg => {
-                    const title = pkg.title || pkg.content_id || '';
-                    return title.toLowerCase().includes(searchTerm);
-                });
-                renderGallery(pane, filtered);
-                pagination.classList.add('hidden'); // Hide pagination during search
-            } else {
-                renderGallery(pane, itemsToFilter); // Restore full page
-                pagination.classList.remove('hidden'); // Show pagination again
+                activeSearchQuery = searchTerm;
+                fetchAndRenderSearchResults(searchTerm, 1);
+            }
+        };
+
+        const clearSearch = () => {
+            searchBar.value = '';
+            const activeTabButton = tabsContainer.querySelector('button.active') || tabsContainer.querySelector('button');
+            if (activeTabButton) {
+                activateTab(activeTabButton.dataset.category);
+            }
+        };
+
+        searchButton.addEventListener('click', performSearch);
+        clearButton.addEventListener('click', clearSearch);
+        searchBar.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                performSearch();
             }
         });
     }
 
-    // Sets up L2/R2 navigation
     function setupControllerNavigation() {
         document.addEventListener('keydown', (event) => {
-            if (searchBar === document.activeElement) return;
+            if (searchBar === document.activeElement || isSearchActive) return;
 
             const tabButtons = Array.from(tabsContainer.querySelectorAll('button'));
             if (tabButtons.length < 2) return;
@@ -297,8 +316,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-
-    // --- Pack Modal Functions (Unchanged) ---
 
     function formatCategoryType(type) {
         const types = {
@@ -320,7 +337,18 @@ document.addEventListener('DOMContentLoaded', () => {
             items.forEach(item => {
                 const li = document.createElement('li');
                 const type = formatCategoryType(item.category_type);
-                li.innerHTML = `${item.title} <span class="pkg-type">${type}</span>`;
+                const ip = window.location.hostname;
+                const port = window.location.port;
+                const pkgUrl = `http://${ip}${port ? ':' + port : ''}${item.install_url}`;
+
+                li.innerHTML = `
+                    <span class="pkg-details">
+                        ${item.title}
+                        <span class="pkg-type">${type}</span>
+                    </span>
+                    <button class="btn-modal btn-individual-install">Install</button>
+                `;
+                li.querySelector('.btn-individual-install').onclick = () => installPkg(pkgUrl);
                 packModalList.appendChild(li);
             });
         }
@@ -345,38 +373,42 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function installAllPkgs(items) {
+    async function installAllPkgs(items) {
         if (!items || items.length === 0) {
             closePackModal();
             return;
         }
-
-        showToast(`Sending ${items.length} packages to PS5...`, true);
+        
+        closePackModal();
         let failed = false;
+        
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            showToast(`Sending ${i + 1} of ${items.length}: ${item.title}...`, true, 0);
 
-        const installPromises = items.map(item => {
             const ip = window.location.hostname;
             const port = window.location.port;
             const pkgUrl = `http://${ip}${port ? ':' + port : ''}${item.install_url}`;
             
-            return window.sendPkgToInstaller(pkgUrl)
-                .catch(err => {
-                    console.error("A pack item failed to send:", err);
-                    failed = true;
-                });
-        });
-
-        Promise.all(installPromises).then(() => {
-            if (failed) {
-                showToast(warningMessage, false);
-            } else {
-                showToast(`All ${items.length} downloads started on PS5!`, true);
+            try {
+                await window.sendPkgToInstaller(pkgUrl);
+            } catch (err) {
+                console.error("A pack item failed to send:", err);
+                failed = true;
+                break; 
             }
-        });
 
-        closePackModal();
+            if (i < items.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        if (failed) {
+            showToast(warningMessage, false);
+        } else {
+            showToast(`All ${items.length} downloads started on PS5!`, true);
+        }
     }
     
-    // --- Start Application ---
     initializeApp();
 });
