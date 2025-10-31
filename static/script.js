@@ -205,15 +205,26 @@ document.addEventListener('DOMContentLoaded', () => {
         
         items.forEach(pkg => renderPkgCard(pkg, gallery));
     }
-
+    
     function renderPkgCard(pkg, container) {
         const cardButton = document.createElement('button');
         cardButton.className = 'pkg-card'; 
         
+        let badgeContainerHTML = '<div class="badge-container">';
+
+        if (pkg.is_pack) {
+            badgeContainerHTML += `<span class="pack-badge">PACK</span>`;
+            badgeContainerHTML += `<span class="size-badge">${pkg.file_size_str}</span>`;
+        } else {
+            badgeContainerHTML += `<span class="size-badge">${pkg.file_size_str}</span>`;
+        }
+        badgeContainerHTML += '</div>';
+
+        
         if (pkg.is_pack) {
             cardButton.setAttribute('onClick', `showPackModal(${JSON.stringify(pkg.title)}, ${JSON.stringify(pkg.items)})`);
             cardButton.innerHTML = `
-                <span class="pack-badge">PACK</span>
+                ${badgeContainerHTML}
                 <div class="img-container">
                     ${pkg.image_path ? 
                         `<img class="btn-img" loading="lazy" src="${pkg.image_path}?t=${new Date().getTime()}" alt="${pkg.title}">` : 
@@ -222,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="info">
                     <p class="title">${pkg.title}</p>
-                    <p class="file-size">${pkg.file_size_str} (${pkg.items.length} items)</p>
+                    <p class="file-size">(${pkg.items.length} items)</p>
                 </div>
             `;
         } else {
@@ -232,6 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             cardButton.setAttribute('onClick', `installPkg('${pkgUrl}')`);
             cardButton.innerHTML = `
+                ${badgeContainerHTML}
                 <div class="img-container">
                     ${pkg.image_path ? 
                         `<img class="btn-img" loading="lazy" src="${pkg.image_path}?t=${new Date().getTime()}" alt="${pkg.title || pkg.content_id}">` : 
@@ -240,12 +252,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="info">
                     <p class="title">${pkg.title || pkg.content_id}</p>
-                    <p class="file-size">${pkg.file_size_str}</p>
+                    <p class="file-size">&nbsp;</p>
                 </div>
             `;
         }
         container.appendChild(cardButton);
     }
+
 
     function updatePagination(pane, currentPage, totalPages, pageChangeCallback) {
         const controls = pane.querySelector('.pagination-controls');
@@ -320,7 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatCategoryType(type) {
         const types = {
             'gd': 'Game', 'gde': 'Game',
-            'gp': 'Patch',
+            'gp': 'Update',
             'ac': 'DLC',
             'ap': 'App',
         };
