@@ -9,6 +9,16 @@ The application runs on your computer and serves a clean, controller-friendly we
 
 ---
 
+🙏 Acknowledgments
+
+- Thanks [@Andy2000211](https://github.com/Andy2000211) for helping me test this code over and over again.
+- Thanks to the developers of **Flask** and **Pillow**.  
+- Huge appreciation to the **PlayStation homebrew community** for their amazing work on exploits and tools like **etaHEN**.  
+- Based on **[mour0ne shop](https://x.com/m0ur0ne)**.  
+
+
+---
+
 ## 📘 About the Project
 
 This project provides a **graphical user interface** to manage a local collection of `.pkg` files for a jailbroken PS5.  
@@ -16,7 +26,8 @@ Instead of typing URLs manually or using command-line tools, this server scans y
 
 It is built with a **Python Flask backend** and a **lightweight vanilla JavaScript frontend**.
 
-![imagem](https://i.imgur.com/wP8KSDp.png)
+
+![imagem](https://i.imgur.com/wqPDFqA.png)
 
 ---
 
@@ -74,9 +85,9 @@ pip install Flask Pillow waitress
 ```
 
 ### 3️⃣ Configure your library
+![image](https://i.imgur.com/4GL2jYc.png)
 
-When you first run the server, it will create a `configs.json` file automatically.  
-Alternatively, you can create it manually in the project root.
+You can manually configure the program by editing the `configs.json` file.
 
 Example `configs.json`:
 
@@ -131,33 +142,6 @@ Replace `<YOUR_PC_IP>` with the IP address you found earlier.
 - Use **L2/R2** to switch between tabs.  
 - Use **Next/Previous** to navigate through pages.  
 - Click any game or app card to **install directly** to your PS5 via **etaHEN**.
-
----
-
-## 📁 File Structure
-
-```
-.
-├── app.py              # Flask backend logic
-├── configs.json        # User configuration (title and paths)
-├── db.json             # Cached PKG metadata
-├── static/
-│   ├── script.js       # Frontend logic (rendering, search, navigation)
-│   ├── style.css       # Web interface styling
-│   ├── index.html      # Main HTML page
-│   ├── l2.svg          # Controller icon (L2)
-│   └── r2.svg          # Controller icon (R2)
-└── cached/             # Extracted icons storage
-```
-
----
-
-## 🙏 Acknowledgments
-
-- Thanks [@Andy2000211](https://github.com/Andy2000211) for helping me test this code over and over again.
-- Thanks to the developers of **Flask** and **Pillow**.  
-- Huge appreciation to the **PlayStation homebrew community** for their amazing work on exploits and tools like **etaHEN**.  
-- Based on **mour0ne shop**.  
 
 ---
 
